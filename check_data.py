@@ -41,22 +41,40 @@ product_data['cat_idx'] = product_data['category'].map(prd_category_to_idx(produ
 def standard_price(product_data):
     g_products = product_data.groupby('cat_idx')['price'].describe().reset_index()
     product_data = pd.merge(product_data, g_products[['cat_idx', 'mean']], on='cat_idx')
-    product_data['relative_price'] = product_data.apply(lambda x: math.log(math.exp(x['price'] - x['mean']) + 1), axis=1)
+    product_data['relative_price'] = product_data.apply(lambda x:
+                                                        math.log(math.exp((x['price'] - x['mean'])/x['mean']) + 1),
+                                                        axis=1)
+    return product_data
+
+# purchase data 와 click data 를 엮어 클릭해서 산 user만 추출함. click dt <= purchase dt 인 조건
+def purchase_after_click(click_data, purchase_data):
+    p_after_c = pd.merge(click_data, purchase_data, on=['user_id', 'product_id'], suffixes=('_click', '_purchase'))
+    p_after_c = p_after_c.where(p_after_c['dt_click'] <= p_after_c['dt_purchase'])
+    p_after_c = p_after_c.sort_values(by=['user_id', 'product_id', 'dt_click', 'dt_purchase'],
+                                      ascending=True).reset_index(drop=True)
+    p_after_c.drop_duplicates(['user_id', 'product_id', 'dt_click'], inplace=True)
+    return p_after_c
+
+# 여러날에 걸쳐 여러번 클릭해보다 한번 산 경우 반영 필요. 중복됨.
+def duplicated_click(p_after_c):
+    p_after_c_1 = p_after_c.groupby(['user_id', 'product_id', 'dt_purchase'], as_index=False).sum()
+    p_after_c_2 = p_after_c.groupby(['user_id', 'product_id', 'dt_click', 'dt_purchase'], as_index=False).sum()
+    p_after_c = pd.merge(p_after_c_1[['user_id', 'product_id', 'dt_purchase', 'measure_click']],
+                         p_after_c_2[['user_id', 'product_id', 'dt_purchase', 'measure_purchase']],
+                         on=['user_id', 'product_id', 'dt_purchase'])
+    p_after_c.drop_duplicates(['user_id', 'product_id', 'dt_purchase', 'measure_click', 'measure_purchase'],
+                                     inplace=True)
+    return p_after_c
+
+# 단순 인기순. 많은 사람들이 구매한 순으로 결정함. 이후 성별 구매 많은 순 데이터 뽑으면 될듯?
+def popular_product(purchase_data):
+    popular_desc = purchase_data.groupby(['product_id'], as_index=False).count()
+    popular_desc.sort_values(by='measure', ascending=False, inplace=True).reset_index(drop=True)
+    return popular_desc
 
 
 
+purchase_data[purchase_data['user_id']==10888]
 
-
-math.exp(1000 - 2000)
-
-math.log(1)
-
-
-
-
-
-
-
-
-
+11069
 
