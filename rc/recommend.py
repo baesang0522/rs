@@ -42,8 +42,6 @@ def cos_sim_mat(product_data, purchase_data):
 
 
 def collab_filter(purchase_data, product_data):
-    epsilon, n_latent_factors = 1e-9, 10
-
     g_purchase_cnt = purchase_data[['user_id', 'product_id']].groupby(['product_id'], as_index=False).count()
     g_purchase_cnt.rename(columns={'product_id': 'product_id', 'user_id': 'cnt'}, inplace=True)
     g_purchase_cnt['cnt'] = (g_purchase_cnt['cnt'] / len(purchase_data)) * 10
@@ -53,33 +51,47 @@ def collab_filter(purchase_data, product_data):
     g_purchase['rating'] = g_purchase['measure'] * g_purchase['cnt']
     g_pp = pd.merge(g_purchase, product_data, on=['product_id'])
 
-    prod_user_rating = g_pp.pivot_table('rating', index='product_id', columns='user_id')
     user_prod_rating = g_pp.pivot_table('rating', index='user_id', columns='product_id')
+    user_prod_rating.fillna(0, inplace=True)
+    prod_user_rating = user_prod_rating.T
 
-    prod_user_rating.fillna(0, inplace=True)
-    prod_based_collab = cosine_similarity(prod_user_rating)
-
-    prod_based_collab = pd.DataFrame(data=prod_based_collab, index=prod_user_rating.index,
-                                     columns=prod_user_rating.index)
-
+    prod_sim = cosine_similarity(prod_user_rating, prod_user_rating)
+    prod_sim_df = pd.DataFrame(prod_sim, index=prod_user_rating.index, columns=prod_user_rating.index)
 
 
-# calculate sparsity
-sparsity = float(len(mat.nonzero()[0]))
-sparsity /= (mat.shape[0] * mat.shape[1])
-sparsity *= 100
-print(f'Sparsity: {sparsity:4.5f}%. This means that {sparsity:4.5f}% of the user-item ratings have a value.')
+def predict_rating(rating_arr, item_sim_arr):
+    sum_sr = rating_arr @ item_sim_arr
+    sum_s_abs = np.array([np.abs(item_sim_arr).sum(axis=1)])
+    rating_pred = sum_sr / sum_s_abs
+    return rating_pred
 
-# compute similarity
-item_corr_mat = cosine_similarity(mat.T)
+rating_pred = predict_rating(user_prod_rating, prod_sim_df)
+rating_pred_matrix = pd.DataFrame(data=rating_pred, index= user_prod_rating.index,
+                                   columns = user_prod_rating.columns)
 
-# get top k item
-print("\nThe top-k similar movie to item_id 99")
-ind2name = {ind:name for ind,name in enumerate(item_genre_mat.index)}
-name2ind = {v:k for k,v in ind2name.items()}
-similar_items = top_k_items(name2ind['99'],
-                            top_k = 10,
-                            corr_mat = item_corr_mat,
-                            map_name = ind2name)
+from sklearn.metrics import mean_squared_error
 
-display(items.loc[items[ITEM_COL].isin(similar_items)])
+
+def get_mse(pred, actual):
+    pred = pred[actual.nonzero()].flatten()
+    actual = actual[actual.nonzero()].flatten()
+    return mean_squared_error(pred, actual)
+
+
+def predict_rating_top(rating_arr, prod_sim_arr, N=5):
+    pred = np.zeros(rating_arr.shape)
+
+    for col in range(rating_arr.shape[1]):
+        temp = np.argsort(prod_sim_arr[:, col])
+        top_n_items = [temp[:-1-N:-1]]
+        for row in range(rating_arr.shape[0]):
+            prod_sim_arr_topN = prod_sim_arr[col, :][top_n_items].T
+            ratings_arr_topN = rating_arr[row, :][top_n_items]
+
+            pred[row, col] = ratings_arr_topN @ prod_sim_arr_topN
+            pred[row, col] /= np.sum(np.abs(prod_sim_arr_topN))
+    return pred
+
+ratings_pred = predict_rating_top(user_prod_rating.values, prod_sim_df.values, N=5)
+get_mse(ratings_pred, user_prod_rating.values)
+
