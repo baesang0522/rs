@@ -57,20 +57,40 @@ def purchase_after_click(click_data, purchase_data):
 
 # 여러날에 걸쳐 여러번 클릭해보다 한번 산 경우 반영 필요. 중복됨.
 def duplicated_click(p_after_c):
-    p_after_c_1 = p_after_c.groupby(['user_id', 'product_id', 'dt_purchase'], as_index=False).sum()
-    p_after_c_2 = p_after_c.groupby(['user_id', 'product_id', 'dt_click', 'dt_purchase'], as_index=False).sum()
-    p_after_c = pd.merge(p_after_c_1[['user_id', 'product_id', 'dt_purchase', 'measure_click']],
-                         p_after_c_2[['user_id', 'product_id', 'dt_purchase', 'measure_purchase']],
+    condition_1 = [['user_id', 'product_id', 'dt_purchase'], ['user_id', 'product_id', 'dt_purchase', 'measure_click']]
+    condition_2 = [['user_id', 'product_id', 'dt_click', 'dt_purchase'],
+                   ['user_id', 'product_id', 'dt_purchase', 'measure_purchase']]
+
+    p_after_c_1 = p_after_c.groupby(condition_1[0], as_index=False).sum()
+    p_after_c_2 = p_after_c.groupby(condition_2[0], as_index=False).sum()
+    p_after_c = pd.merge(p_after_c_1[condition_1[1]], p_after_c_2[condition_2[1]],
                          on=['user_id', 'product_id', 'dt_purchase'])
     p_after_c.drop_duplicates(['user_id', 'product_id', 'dt_purchase', 'measure_click', 'measure_purchase'],
                                      inplace=True)
     return p_after_c
 
 # 단순 인기순. 많은 사람들이 구매한 순으로 결정함. 이후 성별 구매 많은 순 데이터 뽑으면 될듯?
-def popular_product(purchase_data):
+def weighted_popular_product(purchase_data, click_data):
     popular_desc = purchase_data.groupby(['product_id'], as_index=False).count()
-    popular_desc.sort_values(by='measure', ascending=False, inplace=True).reset_index(drop=True)
-    return popular_desc
+    popular_desc.sort_values(by='measure', ascending=False, inplace=True)
+    popular_desc.reset_index(drop=True, inplace=True)
+    popular_desc['tot_pur'] = len(popular_desc)
+    popular_desc = popular_desc[['product_id', 'user_id', 'tot_pur']]
+    popular_desc.rename(columns={'product_id': 'product_id', 'user_id': 'purchase_cnt',
+                                 'tot_pur': 'tot_pur'}, inplace=True)
+    popular_desc['pur_rate'] = popular_desc.apply(lambda x: x['purchase_cnt']/x['tot_pur'] * 10, axis=1)
+
+    # click to purchase. based on prd_id
+    click_desc = click_data[['product_id', 'measure']].groupby(['product_id'], as_index=False).sum()
+    click_desc.sort_values(by='measure', ascending=False, inplace=True)
+    click_desc.reset_index(drop=True, inplace=True)
+    click_desc['tot_click'] = len(click_desc)
+    click_desc['click_rate'] = click_desc.apply(lambda x: x['measure']/x['tot_click'] * 1000, axis=1)
+
+    wpp = pd.merge(click_desc, popular_desc, on='product_id', how='left').fillna(0)
+    wpp['pop_rate'] = wpp.apply(lambda x: (x['purchase_cnt']/x['measure']) * x['click_rate'] * x['pur_rate'], axis=1)
+    wpp.sort_values('pop_rate', ascending=False, inplace=True)
+    return wpp.reset_index(drop=True, inplace=True)
 
 
 
