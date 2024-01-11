@@ -24,6 +24,25 @@ def standard_price(product_data):
     return product_data
 
 
+def user_age_recat(user_data):
+    og_age_range = sorted(user_data['age_range'].astype(str).unique())[:-2]
+    # 앞에 둘, 뒤에 둘 나이 서로 묶음((-14, 15-19), (60-64, 65-69, 70-))
+    del_age_cat = og_age_range[:2] + og_age_range[-3:]
+    user_data['age_range'].fillna('100', inplace=True)
+    user_data['age_range'].replace('unknown', '100', inplace=True)
+
+    for age in del_age_cat[:2]:
+        user_data['age_range'].replace(age, '-19', inplace=True)
+    for age in del_age_cat[2:]:
+        user_data['age_range'].replace(age, '60-', inplace=True)
+
+    user_data['age_range'] = user_data['age_range'].apply(lambda x: x[0] + '0' + x[2:] if x[1] == '5' and len(x) > 3
+                                                                                    else x[:-1] + '9')
+    return user_data
+
+
+
+
 def categorize_user(user_data, to_predict_user_data):
     """
     테스트셋에 기존 3월 데이터엔 없었던 신규 사용자에 대한 추천을 위한 categorize.
@@ -34,18 +53,17 @@ def categorize_user(user_data, to_predict_user_data):
     :param to_predict_user_data: 4월 user data
     :return: user_data, to_predict_user_data
     """
+    # 카테고리화. 실 구매에서는 없는 카테고리 존재. 현재는 나이 범위를 좀 늘릴 필요가 있음.
+    # 20대 초, 20대 후 -> 20대
     # unknown, nan 값 변경. 유저 카테고리화 위함
-    user_data['age_range'].fillna('100', inplace=True)
-    user_data['age_range'].replace('unknown', '100', inplace=True)
+    user_data = user_age_recat(user_data)
     user_data['gender'].fillna('3', inplace=True)
     user_data['gender'].replace('unknown', '3', inplace=True)
 
-    to_predict_user_data['age_range'].fillna('100', inplace=True)
-    to_predict_user_data['age_range'].replace('unknown', '100', inplace=True)
+    to_predict_user_data = user_age_recat(to_predict_user_data)
     to_predict_user_data['gender'].fillna('3', inplace=True)
     to_predict_user_data['gender'].replace('unknown', '3', inplace=True)
 
-    # 카테고리화
     age_2_idx = {age: idx for idx, age in enumerate(sorted(user_data['age_range'].unique()))}
     gender_2_idx = {gender: idx for idx, gender in enumerate(sorted(user_data['gender'].unique()))}
     user_data['age_range'] = user_data['age_range'].map(age_2_idx)
@@ -53,6 +71,12 @@ def categorize_user(user_data, to_predict_user_data):
 
     to_predict_user_data['age_range'] = to_predict_user_data['age_range'].map(age_2_idx)
     to_predict_user_data['gender'] = to_predict_user_data['gender'].map(gender_2_idx)
+
+    user_data['cat'] = user_data.apply(lambda x: str(x['age_range']) + str(x['gender']), axis=1)
+    to_predict_user_data['cat'] = to_predict_user_data.apply(lambda x: str(x['age_range']) + str(x['gender']), axis=1)
+
+    user_data.rename(columns={'user_id': 'old', 'cat': 'user_id'}, inplace=True)
+    to_predict_user_data.rename(columns={'user_id': 'old', 'cat': 'user_id'}, inplace=True)
 
     return user_data, to_predict_user_data
 
