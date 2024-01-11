@@ -30,6 +30,21 @@ g_product = product_data.groupby('category')['price'].describe()
 # 편차가 크기 때문에 더 이상 카테고리를 줄이지 않고 진행.
 
 
+len(product_data['product_id'].unique()) #48533
+len(purchase_data['product_id'].unique()) # 432
+len(click_data['product_id'].unique()) # 49303
+
+for p in purchase_data['product_id'].unique():
+    if p not in product_data['product_id'].unique():
+        print(p) # 25782, 38776 product 메타에 없음
+
+for p in click_data['product_id'].unique():
+    if p not in product_data['product_id'].unique():
+        print(p) # click에 product 에는 없는 애들이 많음
+
+
+
+
 # 카테고리 인덱스 화
 def prd_category_to_idx(category_list):
     return {category: idx for idx, category in enumerate(set(category_list))}
