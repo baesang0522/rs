@@ -75,7 +75,7 @@ len(user_data['user_id'].unique()) # 14
 len(to_predict_user_data['user_id'].unique()) # 13
 
 
-for id in user_data['user_id'].unique():
+for id in to_predict_user_data['user_id'].unique():
     if id not in p_after_c['user_id'].unique():
         print(id)
 
