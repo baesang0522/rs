@@ -37,10 +37,8 @@ def user_age_recat(user_data):
         user_data['age_range'].replace(age, '60-', inplace=True)
 
     user_data['age_range'] = user_data['age_range'].apply(lambda x: x[0] + '0' + x[2:] if x[1] == '5' and len(x) > 3
-                                                                                    else x[:-1] + '9')
+                                                                                        else x[:-1] + '9')
     return user_data
-
-
 
 
 def categorize_user(user_data, to_predict_user_data):
@@ -104,6 +102,34 @@ def duplicated_click(p_after_c):
     p_after_c.drop_duplicates(['user_id', 'product_id', 'dt_purchase', 'measure_click', 'measure_purchase'],
                               inplace=True)
     return p_after_c
+
+
+def to_matrix(c_or_p_data, product_data, cp_type):
+    g_purchase_cnt = c_or_p_data[['user_id', 'product_id']].groupby(['product_id'], as_index=False).count()
+    g_purchase_cnt.rename(columns={'product_id': 'product_id', 'user_id': 'cnt'}, inplace=True)
+    g_purchase_cnt['cnt'] = (g_purchase_cnt['cnt'] / len(c_or_p_data))
+
+    if cp_type == 'click':
+        g_purchase_sum = c_or_p_data[['user_id', 'product_id', 'measure']].groupby(['user_id', 'product_id'],
+                                                                                   as_index=False).sum()
+    else:
+        g_purchase_sum = c_or_p_data[['user_id', 'product_id', 'measure_purchase']].groupby(['user_id', 'product_id'],
+                                                                                            as_index=False).sum()
+    g_purchase = pd.merge(g_purchase_sum, g_purchase_cnt, on=['product_id'])
+
+    if cp_type == 'click':
+        g_purchase['rating'] = g_purchase['measure'] * g_purchase['cnt']
+    else:
+        g_purchase['rating'] = g_purchase['measure_purchase'] * g_purchase['cnt']
+
+    g_pp = pd.merge(product_data, g_purchase, on=['product_id'], how='left', suffixes=('_prod', '_pur'))
+    g_pp.fillna(0, inplace=True)
+    g_pp['rating'] = g_pp['rating_prod'] + 1 + g_pp['rating_pur']
+    # g_pp = pd.merge(g_purchase, product_data, on=['product_id'])
+
+    user_prod_rating = g_pp.pivot_table('rating', index='user_id', columns='product_id')
+    user_prod_rating.fillna(0, inplace=True)
+    return user_prod_rating
 
 
 # 단순 인기순. 많은 사람들이 구매한 순으로 결정함. 이후 성별 구매 많은 순 데이터 뽑으면 될듯?

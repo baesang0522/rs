@@ -40,26 +40,7 @@ def cos_sim_mat(product_data, purchase_data):
     return corr_mat
 
 
-def matrix_for_collab_filter(purchase_data, product_data):
-    g_purchase_cnt = purchase_data[['user_id', 'product_id']].groupby(['product_id'], as_index=False).count()
-    g_purchase_cnt.rename(columns={'product_id': 'product_id', 'user_id': 'cnt'}, inplace=True)
-    g_purchase_cnt['cnt'] = (g_purchase_cnt['cnt'] / len(purchase_data))
-    g_purchase_sum = purchase_data[['user_id', 'product_id', 'measure_purchase']].groupby(['user_id', 'product_id'],
-                                                                                 as_index=False).sum()
-    g_purchase = pd.merge(g_purchase_sum, g_purchase_cnt, on=['product_id'])
-    g_purchase['rating'] = g_purchase['measure_purchase'] * g_purchase['cnt']
-    g_pp = pd.merge(product_data, g_purchase, on=['product_id'], how='left', suffixes=('_prod', '_pur'))
-    g_pp.fillna(0, inplace=True)
-    g_pp['rating'] = g_pp['rating_prod'] + 1 + g_pp['rating_pur']
-    # g_pp = pd.merge(g_purchase, product_data, on=['product_id'])
 
-    user_prod_rating = g_pp.pivot_table('rating', index='user_id', columns='product_id')
-    user_prod_rating.fillna(0, inplace=True)
-    prod_user_rating = user_prod_rating.T
-
-    prod_sim = cosine_similarity(prod_user_rating, prod_user_rating)
-    prod_sim_df = pd.DataFrame(prod_sim, index=prod_user_rating.index, columns=prod_user_rating.index)
-    return user_prod_rating, prod_sim_df
 
 
 def get_mse(pred, actual):
@@ -69,7 +50,6 @@ def get_mse(pred, actual):
 
 
 def get_rmse(R, P, Q, non_zeros):
-    error = 0
     full_pred_matrix = np.dot(P, Q.T)
     x_non_zero = [non_zero[0] for non_zero in non_zeros]
     y_non_zero = [non_zero[1] for non_zero in non_zeros]
@@ -113,7 +93,7 @@ def matrix_factorization(R, K, steps=200, learning_rate=0.01, r_lambda=0.01):
             Q[j, :] = Q[j, :] + learning_rate * (eij * P[i, :] - r_lambda * Q[j, :])
         rmse = get_rmse(R, P, Q, non_zeros)
         if step % 10 == 0:
-            print("### iteration step : ", step," rmse : ", rmse)
+            print("### iteration step : ", step, " rmse : ", rmse)
     return P, Q
 
 
@@ -122,7 +102,7 @@ def recommend_prod_by_user(pred_df, rating_matrix, user_id, top=5):
     bought = user_rating[user_rating > 0].index.tolist()
 
     prod_list = rating_matrix.columns.tolist()
-    unseen_list = [movie for movie in prod_list if movie not in bought]
+    unseen_list = [prod for prod in prod_list if prod not in bought]
 
     recomm_prod = pred_df.loc[user_id, unseen_list].sort_values(ascending=False)[:top]
     recomm_prod_df = pd.DataFrame(data=recomm_prod.values,
