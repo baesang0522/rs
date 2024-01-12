@@ -1,4 +1,5 @@
 import math
+import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 
@@ -104,7 +105,7 @@ def duplicated_click(p_after_c):
     return p_after_c
 
 
-def to_matrix(c_or_p_data, product_data, cp_type):
+def making_matrix(c_or_p_data, product_data, cp_type):
     g_purchase_cnt = c_or_p_data[['user_id', 'product_id']].groupby(['product_id'], as_index=False).count()
     g_purchase_cnt.rename(columns={'product_id': 'product_id', 'user_id': 'cnt'}, inplace=True)
     g_purchase_cnt['cnt'] = (g_purchase_cnt['cnt'] / len(c_or_p_data))
@@ -124,6 +125,7 @@ def to_matrix(c_or_p_data, product_data, cp_type):
 
     g_pp = pd.merge(product_data, g_purchase, on=['product_id'], how='left', suffixes=('_prod', '_pur'))
     g_pp.fillna(0, inplace=True)
+    g_pp = g_pp[g_pp['user_id'] != 0]
     g_pp['rating'] = g_pp['rating_prod'] + 1 + g_pp['rating_pur']
     # g_pp = pd.merge(g_purchase, product_data, on=['product_id'])
 

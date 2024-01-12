@@ -1,6 +1,5 @@
 import os
 import logging
-import numpy as np
 import pandas as pd
 
 
@@ -9,7 +8,7 @@ from sklearn.utils import shuffle
 from config import config as c
 from rc.recommendation import MatrixFactorization
 from preprocessing.preprocessing import (standard_price, categorize_user, purchase_after_click, duplicated_click,
-                                         weighted_popular_product, to_matrix)
+                                         weighted_popular_product, making_matrix)
 
 config = c['DEV']
 
@@ -31,13 +30,13 @@ def new_user_preprocess(user_data, click_data, purchase_data):
 def train_process(user_prod_rating, exist_or_not):
     ratings = shuffle(user_prod_rating, random_state=2021)
     cutoff = int(config.TRAIN_SIZE * len(ratings))
-    ratings_test = ratings.iloc[cutoff:]
+    ratings_test = ratings.iloc[cutoff:].stack().reset_index()
     if exist_or_not == 'exists':
         mf = MatrixFactorization(ratings, config.EXIST_HYPER_PARAMETERS)
     else:
         mf = MatrixFactorization(ratings, config.NOT_EXIST_HYPER_PARAMETERS)
     mf.set_test(ratings_test)
-    mf.test()
+    mf.train()
     return mf
 
 
@@ -53,7 +52,7 @@ def exists_user_recommendation(product_data, purchase_data, click_data, test_dat
     p_after_c = purchase_after_click(click_data, purchase_data)
     p_after_c = duplicated_click(p_after_c)
 
-    user_prod_rating = to_matrix(c_or_p_data=p_after_c, product_data=own_rating_products, cp_type='purchase')
+    user_prod_rating = making_matrix(c_or_p_data=p_after_c, product_data=own_rating_products, cp_type='purchase')
     mf = train_process(user_prod_rating, exist_or_not='exists')
     m_test_pur = pd.merge(test_data, p_after_c, on='user_id')
     exist_user = m_test_pur['user_id'].unique()
@@ -80,21 +79,20 @@ def new_user_recommendation(user_data, product_data, purchase_data, click_data, 
     p_after_c = purchase_after_click(cat_user_click, cat_user_pur)
     p_after_c = duplicated_click(p_after_c)
 
-    user_prod_rating = to_matrix(c_or_p_data=p_after_c, product_data=own_rating_products, cp_type='purchase')
+    user_prod_rating = making_matrix(c_or_p_data=p_after_c, product_data=own_rating_products, cp_type='purchase')
     mf = train_process(user_prod_rating, exist_or_not='not_exist')
 
     not_in_cat = [cat_id for cat_id in user_data['user_id'].unique() if cat_id not in p_after_c['user_id'].unique()]
 
     no_exists_1 = to_predict_user_data[~to_predict_user_data['user_id'].isin(not_in_cat)]
     exist_user = no_exists_1['user_id'].unique()
+
     result_dict = {'user_id': [], 'recommendation': []}
     for uid in exist_user:
         result_dict['user_id'].append(uid)
         result_dict['recommendation'].append(mf.recommend_prod_by_user(user_prod_rating, user_id=uid).index[topN])
 
-    user_prod_rating = to_matrix(c_or_p_data=cat_user_click, product_data=own_rating_products, cp_type='click')
-    print(cat_user_click.columns)
-    print(2222222222222222222222222222222222222222222222)
+    user_prod_rating = making_matrix(c_or_p_data=cat_user_click, product_data=own_rating_products, cp_type='click')
     mf = train_process(user_prod_rating, exist_or_not='not_exist')
     for uid in not_in_cat:
         result_dict['user_id'].append(uid)
@@ -103,7 +101,7 @@ def new_user_recommendation(user_data, product_data, purchase_data, click_data, 
     result_df = pd.merge(to_predict_user_data, cat_df, on='user_id')
     result_df = result_df[['old', 'recommendation']]
     result_df = result_df.rename(columns={'old': 'user_id'})
-    return dict(zip(result_df.user_id, result_df.recommendation))
+    return {'user_id': result_df['user_id'].to_list(), 'recommendation': result_df['recommendation'].to_list()}
 
 
 def main_functions(user_data_name, product_data_name, purchase_data_name, click_data_name, test_data_name):
@@ -118,8 +116,9 @@ def main_functions(user_data_name, product_data_name, purchase_data_name, click_
                                                               test_data, topN=1)
     no_exist_dict = new_user_recommendation(user_data, std_p_data, purchase_data, click_data, test_data,
                                             exist_user_list, topN=1)
-    exists_dict['user_id'].expand(no_exist_dict['user_id'])
-    exists_dict['recommendation'].expand(no_exist_dict['recommendation'])
+
+    exists_dict['user_id'].extend(no_exist_dict['user_id'])
+    exists_dict['recommendation'].extend(no_exist_dict['recommendation'])
     exists_df = pd.DataFrame(exists_dict)
     result_df = pd.merge(test_data, exists_df, on='user_id')
     result_df.to_csv(os.path.join(config.DATA_PATH, 'result.csv'))
