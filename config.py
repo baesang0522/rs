@@ -6,13 +6,13 @@ class DevConfig:
     TRAIN_SIZE = 0.8
     EXIST_HYPER_PARAMETERS = {
         'K': 50,
-        'learning_rate': 0.001,
+        'learning_rate': 0.01,
         'beta': 0.002,
-        'iterations': 100
+        'iterations': 300
     }
     NOT_EXIST_HYPER_PARAMETERS = {
-        'K': 10,
-        'learning_rate': 0.001,
+        'K': 50,
+        'learning_rate': 0.01,
         'beta': 0.002,
         'iterations': 100
     }

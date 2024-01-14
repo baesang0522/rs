@@ -1,7 +1,7 @@
 import math
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 
 
 def prd_category_to_idx(category_list):
@@ -130,13 +130,14 @@ def making_matrix(c_or_p_data, product_data, cp_type):
     # g_pp = pd.merge(g_purchase, product_data, on=['product_id'])
 
     user_prod_rating = g_pp.pivot_table('rating', index='user_id', columns='product_id')
+    # user_prod_rating.drop(0, inplace=True)
     user_prod_rating.fillna(0, inplace=True)
     return user_prod_rating
 
 
 # 단순 인기순. 많은 사람들이 구매한 순으로 결정함. 이후 성별 구매 많은 순 데이터 뽑으면 될듯?
 def weighted_popular_product(purchase_data, click_data):
-    scaler = MinMaxScaler()
+    scaler = StandardScaler()
 
     popular_desc = purchase_data.groupby(['product_id'], as_index=False).count()
     popular_desc.sort_values(by='measure', ascending=False, inplace=True)

@@ -1,7 +1,6 @@
 from main_functions import main_functions
 
 
-
 if __name__ == '__main__':
     main_functions(user_data_name='_users.csv',
                    product_data_name='_products.csv',

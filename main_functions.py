@@ -2,7 +2,7 @@ import os
 import logging
 import pandas as pd
 
-
+from collections import defaultdict
 from sklearn.utils import shuffle
 
 from config import config as c
@@ -40,7 +40,7 @@ def train_process(user_prod_rating, exist_or_not):
     return mf
 
 
-def exists_user_recommendation(product_data, purchase_data, click_data, test_data, topN=1):
+def exists_user_recommendation(product_data, purchase_data, click_data, test_data):
     # 데이터 전처리
     weighted_popular = weighted_popular_product(purchase_data, click_data)
 
@@ -53,18 +53,18 @@ def exists_user_recommendation(product_data, purchase_data, click_data, test_dat
     p_after_c = duplicated_click(p_after_c)
 
     user_prod_rating = making_matrix(c_or_p_data=p_after_c, product_data=own_rating_products, cp_type='purchase')
+    print("start training")
     mf = train_process(user_prod_rating, exist_or_not='exists')
     m_test_pur = pd.merge(test_data, p_after_c, on='user_id')
     exist_user = m_test_pur['user_id'].unique()
 
-    result_dict = {'user_id': [], 'recommendation': []}
+    result_dict = defaultdict(list)
     for uid in exist_user:
-        result_dict['user_id'].append(uid)
-        result_dict['recommendation'].append(mf.recommend_prod_by_user(user_prod_rating, user_id=uid).index[topN])
+        result_dict[uid] = list(mf.recommend_prod_by_user(user_prod_rating, own_rating_products, user_id=uid).index)
     return result_dict, exist_user
 
 
-def new_user_recommendation(user_data, product_data, purchase_data, click_data, test_data, exist_user_list, topN=1):
+def new_user_recommendation(user_data, product_data, purchase_data, click_data, test_data, exist_user_list):
     test_data = test_data[~test_data['user_id'].isin(exist_user_list)]
     user_data, to_predict_user_data = categorize_user(user_data, test_data)
 
@@ -87,21 +87,19 @@ def new_user_recommendation(user_data, product_data, purchase_data, click_data, 
     no_exists_1 = to_predict_user_data[~to_predict_user_data['user_id'].isin(not_in_cat)]
     exist_user = no_exists_1['user_id'].unique()
 
-    result_dict = {'user_id': [], 'recommendation': []}
+    result_dict = defaultdict(list)
     for uid in exist_user:
-        result_dict['user_id'].append(uid)
-        result_dict['recommendation'].append(mf.recommend_prod_by_user(user_prod_rating, user_id=uid).index[topN])
+        result_dict[uid] = list(mf.recommend_prod_by_user(user_prod_rating, own_rating_products, user_id=uid).index)
 
     user_prod_rating = making_matrix(c_or_p_data=cat_user_click, product_data=own_rating_products, cp_type='click')
     mf = train_process(user_prod_rating, exist_or_not='not_exist')
     for uid in not_in_cat:
-        result_dict['user_id'].append(uid)
-        result_dict['recommendation'].append(mf.recommend_prod_by_user(user_prod_rating, user_id=uid).index[topN])
-    cat_df = pd.DataFrame(result_dict)
+        result_dict[uid] = list(mf.recommend_prod_by_user(user_prod_rating, own_rating_products, user_id=uid).index)
+    cat_df = pd.DataFrame({'user_id': list(result_dict.keys()), 'recommendation': list(result_dict.values())})
     result_df = pd.merge(to_predict_user_data, cat_df, on='user_id')
     result_df = result_df[['old', 'recommendation']]
     result_df = result_df.rename(columns={'old': 'user_id'})
-    return {'user_id': result_df['user_id'].to_list(), 'recommendation': result_df['recommendation'].to_list()}
+    return {row.user_id: row.recommendation for row in result_df.itertuples()}
 
 
 def main_functions(user_data_name, product_data_name, purchase_data_name, click_data_name, test_data_name):
@@ -110,44 +108,20 @@ def main_functions(user_data_name, product_data_name, purchase_data_name, click_
     purchase_data = pd.read_csv(os.path.join(config.DATA_PATH, purchase_data_name))
     click_data = pd.read_csv(os.path.join(config.DATA_PATH, click_data_name))
     test_data = pd.read_csv(os.path.join(config.DATA_PATH, test_data_name))
+
+    # 이상치 우선 대략적으로 삭제함. 나중에 수정
+    purchase_data = purchase_data[purchase_data['measure'] < 10]
+    click_data = click_data[click_data['measure'] < 100]
     std_p_data = standard_price(product_data)
 
     exists_dict, exist_user_list = exists_user_recommendation(std_p_data, purchase_data, click_data,
-                                                              test_data, topN=1)
+                                                              test_data)
     no_exist_dict = new_user_recommendation(user_data, std_p_data, purchase_data, click_data, test_data,
-                                            exist_user_list, topN=1)
+                                            exist_user_list)
 
-    exists_dict['user_id'].extend(no_exist_dict['user_id'])
-    exists_dict['recommendation'].extend(no_exist_dict['recommendation'])
-    exists_df = pd.DataFrame(exists_dict)
-    result_df = pd.merge(test_data, exists_df, on='user_id')
-    result_df.to_csv(os.path.join(config.DATA_PATH, 'result.csv'))
+    exists_dict.update(no_exist_dict)
+    result_df = pd.DataFrame({'user_id': list(exists_dict.keys()), 'recommendation': list(exists_dict.values())})
+    result_df = pd.merge(test_data, result_df, on='user_id')
+    result_df.to_csv(os.path.join(config.DATA_PATH, 'result.csv'), index=False)
     
 
-
-
-
-#
-#
-#
-#
-#
-#
-# os.path.join(os.getcwd() + 'data' + '_purchase_log.csv')
-# len(p_after_c['user_id'].unique()) # 11
-# len(cat_user_click['user_id'].unique()) # 14
-# len(user_data['user_id'].unique()) # 14
-# len(to_predict_user_data['user_id'].unique()) # 13
-#
-#
-# for id in user_data['user_id'].unique():
-#     if id not in p_after_c['user_id'].unique():
-#         print(id)
-#
-#
-# aa = 'abcd'
-# if aa[1] == 'b':
-#     aa[1] = 'r'
-#
-# dd = {'a': [1,2,3,4,5], 'b': [2,3,4,5,6]}
-# pd.DataFrame(dd).to_dict(orient='records')
