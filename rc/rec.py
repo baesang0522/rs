@@ -110,35 +110,3 @@ def recommend_prod_by_user(pred_df, rating_matrix, user_id, top=5):
                                     columns=['pred_score'])
 
     return recomm_prod_df
-
-
-ratings_pred = predict_rating_top(user_prod_rating.values, prod_sim_df.values, N=5)
-get_mse(ratings_pred, user_prod_rating.values)
-
-P, Q = matrix_factorization(user_prod_rating.values, K=50, steps=200, learning_rate=0.01, r_lambda=0.01)
-pred_matrix = np.dot(P, Q.T)
-ratings_pred_matrix = pd.DataFrame(data=pred_matrix,
-                                   index=user_prod_rating.index,
-                                   columns=user_prod_rating.columns)
-
-recommend_prod_by_user(ratings_pred_matrix, user_prod_rating, 306, top=10)
-
-
-
-
-
-
-
-
-
-
-
-# def predict_rating(rating_arr, item_sim_arr):
-#     sum_sr = rating_arr @ item_sim_arr
-#     sum_s_abs = np.array([np.abs(item_sim_arr).sum(axis=1)])
-#     rating_pred = sum_sr / sum_s_abs
-#     return rating_pred
-#
-# rating_pred = predict_rating(user_prod_rating, prod_sim_df)
-# rating_pred_matrix = pd.DataFrame(data=rating_pred, index= user_prod_rating.index,
-#                                    columns = user_prod_rating.columns)
