@@ -1,6 +1,6 @@
 import math
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 
 def standard_price(product_data):
@@ -154,6 +154,11 @@ def making_matrix(c_or_p_data, product_data, cp_type):
 
 
 def purchase_pop_rate(purchase_data):
+    """
+    전체 구매 데이터 중 특정 품목이 차지 하는 비율(얼마나 주목받는지)
+    :param purchase_data: purchase_data
+    :return: pur_rate 컬럼이 추가된 purchase_data
+    """
     popular_desc = purchase_data.groupby(['product_id'], as_index=False).count()
     popular_desc.sort_values(by='measure', ascending=False, inplace=True)
     popular_desc.reset_index(drop=True, inplace=True)
@@ -166,16 +171,30 @@ def purchase_pop_rate(purchase_data):
 
 
 def click_pop_rate(click_data):
+    """
+    전체 클릭 데이터 중 특정 품목이 차지 하는 비율(얼마나 주목받는지)
+    :param click_data: click_data
+    :return: click_rate 컬럼이 추가된 click_data
+    """
     click_desc = click_data[['product_id', 'measure']].groupby(['product_id'], as_index=False).sum()
     click_desc.sort_values(by='measure', ascending=False, inplace=True)
     click_desc.reset_index(drop=True, inplace=True)
+
     click_desc['tot_click'] = len(click_desc)
     click_desc['click_rate'] = click_desc.apply(lambda x: x['measure'] / x['tot_click'] * 1000, axis=1)
     return click_desc
 
 
-# 단순 인기순. 많은 사람들이 구매한 순으로 결정함. 이후 성별 구매 많은 순 데이터 뽑으면 될듯?
 def weighted_popular_product(purchase_data, click_data):
+    """
+    pur_cnt, measure, click_rate, pur_rate를 이용 pop_rate 생성 후
+    pop_rate에 min_max scale 후 log를 취함 -> standard scale이 더 성능이 좋아보임
+    log를 취하는 이유는 좀 더 부드럽게 만들기 위함임
+
+    :param purchase_data: purchase_data
+    :param click_data: click_data
+    :return: pd.DataFrame.columns = ['product_id', 'pop_rate']
+    """
     scaler = StandardScaler()
 
     popular_desc, click_desc = purchase_pop_rate(purchase_data), click_pop_rate(click_data)
@@ -192,6 +211,14 @@ def weighted_popular_product(purchase_data, click_data):
 
 
 def preprocessing_pur_click_data(purchase_data, click_data, product_data):
+    """
+    클릭 후 구매 데이터와 product에 대한 상대적 가격 점수를 구하기 위한 함수
+
+    :param purchase_data: purchase_data
+    :param click_data: click_dat
+    :param product_data: product_data
+    :return: purchase_after_click data, own_rating_product
+    """
     weighted_popular = weighted_popular_product(purchase_data, click_data)
 
     own_rating_products = pd.merge(product_data, weighted_popular, on='product_id')
@@ -205,6 +232,15 @@ def preprocessing_pur_click_data(purchase_data, click_data, product_data):
 
 
 def new_user_preprocess(user_data, click_data, purchase_data):
+    """
+    new user recommendation을 위해 click_data와 purchase_data의 user_id를
+    category화 하는 함수
+
+    :param user_data: user_data
+    :param click_data: click_data
+    :param purchase_data: purchase_data
+    :return: categorized click & purchase data
+    """
     remain_col_list, rename_col_dict = ['user_id_y', 'product_id', 'measure', 'dt'], {'user_id_y': 'user_id'}
 
     cat_user_click = pd.merge(click_data, user_data, left_on='user_id', right_on='old')

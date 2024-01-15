@@ -245,6 +245,9 @@ cat_pur_user = cat_pur_user[['cat_user_x', 'age_range', 'gender', 'cat', 'measur
 
 bb = cat_pur_user[cat_pur_user['cat_user_x']=='41']
 aa = cat_pur_user[cat_pur_user['cat_user_x']=='31']
+cc = cat_pur_user[cat_pur_user['cat_user_x']=='51']
+dd = cat_pur_user[cat_pur_user['cat_user_x']=='61']
+ee = cat_pur_user[cat_pur_user['cat_user_x']=='21']
 # 특이하게 30대 여성보다 40대 여성에서 아기용품에 대해 구매율이 더 높음
 
 cat_click_not = cat_click[~cat_click['category'].isin(cat_pur_user['category'].unique())]
@@ -255,6 +258,7 @@ cat_click_not['cat'] = cat_click_not['category'].map({val: key for key, val in p
 # 가격 하락이나 종류의 다양성 증가 등 구매를 올릴 수 있다면 매출이 증가할 가능성 있음
 # 예를 들어 게임은 19세 이하 남성이 상품 카테고리중 가장 관심 있어 하는데 해당 카테고리에 대한 경쟁력을 강화하면 19세 이하 남성 고객을 확보 할 수 있음
 
-
-
-
+cat_click_yes = cat_click[cat_click['category'].isin(cat_pur_user['category'].unique())]
+cat_click_yes = cat_click_yes[['category', 'measure']]
+cat_click_yes = cat_click_yes.groupby('category', as_index=False).sum()
+cat_click_yes['cat'] = cat_click_yes['category'].map({val: key for key, val in product_2_idx.items()})

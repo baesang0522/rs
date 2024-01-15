@@ -60,6 +60,16 @@ def exists_user_recommendation(product_data, purchase_data, click_data, test_dat
 
 
 def new_user_recommendation(user_data, product_data, purchase_data, click_data, test_data, exist_user_list):
+    """
+    구매이력 & test에 존재하는 user 에 대한 추천모델 학습 & 예측 함수
+    :param user_data: user_csv
+    :param product_data: product_csv
+    :param purchase_data: purchase_csv
+    :param click_data: click_csv
+    :param test_data: _xxxx_users_csv
+    :param exist_user_list: 구매이력 & test에 존재하는 user id 리스트
+    :return: {'user_id': [product1, product2, ..., product5], ...}
+    """
     test_data = test_data[~test_data['user_id'].isin(exist_user_list)]
     user_data, to_predict_user_data = categorize_user(user_data, test_data)
 
@@ -96,6 +106,16 @@ def new_user_recommendation(user_data, product_data, purchase_data, click_data, 
 
 
 def main_functions(user_data_name, product_data_name, purchase_data_name, click_data_name, test_data_name):
+    """
+    추천 모델 train wrapping 함수(exists & new)
+
+    :param user_data_name: user_csv file name
+    :param product_data_name: product_csv file name
+    :param purchase_data_name: purchase_csv file name
+    :param click_data_name: click_csv file name
+    :param test_data_name: _xxxx_users_csv file name
+    :return:
+    """
     user_data = pd.read_csv(os.path.join(config.DATA_PATH, user_data_name))
     product_data = pd.read_csv(os.path.join(config.DATA_PATH, product_data_name))
     purchase_data = pd.read_csv(os.path.join(config.DATA_PATH, purchase_data_name))
