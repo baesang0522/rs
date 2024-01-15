@@ -105,13 +105,6 @@ class MatrixFactorization:
     def recommend_prod_by_user(self, rating_matrix, own_rating_product, user_id, top=5):
         pred_matrix = np.dot(self.P, self.Q.T)
         pred_df = pd.DataFrame(data=pred_matrix, index=rating_matrix.index, columns=rating_matrix.columns)
-        # pred_df = pred_df.stack().reset_index()
-        # pred_df.columns = ['user_id', 'product_id', 'score']
-        # pred_df = pd.merge(own_rating_product, pred_df, on='product_id', how='left')
-        # pred_df['added_rating'] = pred_df['score'] + pred_df['rating']
-        # pred_df.fillna(0, inplace=True)
-        # pred_df = pred_df[pred_df['user_id'] != 0]
-        # pred_df = pred_df.pivot_table('added_rating', index='user_id', columns='product_id')
 
         user_rating = rating_matrix.loc[user_id, :]
         bought = user_rating[user_rating > 0].index.tolist()

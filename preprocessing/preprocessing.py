@@ -1,11 +1,6 @@
 import math
-import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-
-
-def prd_category_to_idx(category_list):
-    return {category: idx for idx, category in enumerate(set(category_list))}
 
 
 def standard_price(product_data):
@@ -16,7 +11,6 @@ def standard_price(product_data):
     :param product_data: pandas dataframe
     :return: changed
     """
-    # product_data['cat_idx'] = product_data['category'].map(prd_category_to_idx(product_data['category']))
     g_products = product_data.groupby('category')['price'].describe().reset_index()
     product_data = pd.merge(product_data, g_products[['category', 'mean']], on='category')
     product_data['relative_price'] = product_data.apply(lambda x:
@@ -26,6 +20,11 @@ def standard_price(product_data):
 
 
 def user_age_recat(user_data):
+    """
+    유저 age_range 카테고리화 함수
+    :param user_data: user_data
+    :return: categorized age_range user_data
+    """
     og_age_range = sorted(user_data['age_range'].astype(str).unique())[:-2]
     # 앞에 둘, 뒤에 둘 나이 서로 묶음((-14, 15-19), (60-64, 65-69, 70-))
     del_age_cat = og_age_range[:2] + og_age_range[-3:]
@@ -48,13 +47,14 @@ def categorize_user(user_data, to_predict_user_data):
     유저 카테고리화를 진행.
     기존 유저는 기존 데이터로 추천 진행
 
+    카테고리화. 실 구매에서는 없는 카테고리 존재. 현재는 나이 범위를 좀 늘릴 필요가 있음.
+    20대 초, 20대 후 -> 20대
+    unknown, nan 값 변경. 유저 카테고리화 위함
+
     :param user_data: 3월 user data
     :param to_predict_user_data: 4월 user data
     :return: user_data, to_predict_user_data
     """
-    # 카테고리화. 실 구매에서는 없는 카테고리 존재. 현재는 나이 범위를 좀 늘릴 필요가 있음.
-    # 20대 초, 20대 후 -> 20대
-    # unknown, nan 값 변경. 유저 카테고리화 위함
     user_data = user_age_recat(user_data)
     user_data['gender'].fillna('3', inplace=True)
     user_data['gender'].replace('unknown', '3', inplace=True)
@@ -80,8 +80,15 @@ def categorize_user(user_data, to_predict_user_data):
     return user_data, to_predict_user_data
 
 
-# purchase data 와 click data 를 엮어 클릭해서 산 user만 추출함. click dt <= purchase dt 인 조건
 def purchase_after_click(click_data, purchase_data):
+    """
+    purchase data 와 click data 를 엮어 클릭해서 산 user만 추출함.
+    click dt <= purchase dt 인 조건
+
+    :param click_data: click_data
+    :param purchase_data: purchase_data
+    :return: merged click, purchased data.
+    """
     p_after_c = pd.merge(click_data, purchase_data, on=['user_id', 'product_id'], suffixes=('_click', '_purchase'))
     p_after_c = p_after_c.where(p_after_c['dt_click'] <= p_after_c['dt_purchase'])
     p_after_c = p_after_c.sort_values(by=['user_id', 'product_id', 'dt_click', 'dt_purchase'],
@@ -90,8 +97,13 @@ def purchase_after_click(click_data, purchase_data):
     return p_after_c
 
 
-# 여러날에 걸쳐 여러번 클릭해보다 한번 산 경우 반영 필요. 중복됨.
 def duplicated_click(p_after_c):
+    """
+    여러날에 걸쳐 여러번 클릭해보다 한번 산 경우 반영 필요. 중복됨.
+
+    :param p_after_c: purchased_after_click return 값
+    :return: 중복이 제거된 p_after_c
+    """
     condition_1 = [['user_id', 'product_id', 'dt_purchase'], ['user_id', 'product_id', 'dt_purchase', 'measure_click']]
     condition_2 = [['user_id', 'product_id', 'dt_click', 'dt_purchase'],
                    ['user_id', 'product_id', 'dt_purchase', 'measure_purchase']]
@@ -106,6 +118,14 @@ def duplicated_click(p_after_c):
 
 
 def making_matrix(c_or_p_data, product_data, cp_type):
+    """
+     mf train set 형태 제작 함수
+
+    :param c_or_p_data: click_data or purchase_data
+    :param product_data: product_data
+    :param cp_type: click or purchase
+    :return: pivoted pd.DataFrame
+    """
     g_purchase_cnt = c_or_p_data[['user_id', 'product_id']].groupby(['product_id'], as_index=False).count()
     g_purchase_cnt.rename(columns={'product_id': 'product_id', 'user_id': 'cnt'}, inplace=True)
     g_purchase_cnt['cnt'] = (g_purchase_cnt['cnt'] / len(c_or_p_data))
@@ -127,18 +147,13 @@ def making_matrix(c_or_p_data, product_data, cp_type):
     g_pp.fillna(0, inplace=True)
     g_pp = g_pp[g_pp['user_id'] != 0]
     g_pp['rating'] = g_pp['rating_prod'] + 1 + g_pp['rating_pur']
-    # g_pp = pd.merge(g_purchase, product_data, on=['product_id'])
 
     user_prod_rating = g_pp.pivot_table('rating', index='user_id', columns='product_id')
-    # user_prod_rating.drop(0, inplace=True)
     user_prod_rating.fillna(0, inplace=True)
     return user_prod_rating
 
 
-# 단순 인기순. 많은 사람들이 구매한 순으로 결정함. 이후 성별 구매 많은 순 데이터 뽑으면 될듯?
-def weighted_popular_product(purchase_data, click_data):
-    scaler = StandardScaler()
-
+def purchase_pop_rate(purchase_data):
     popular_desc = purchase_data.groupby(['product_id'], as_index=False).count()
     popular_desc.sort_values(by='measure', ascending=False, inplace=True)
     popular_desc.reset_index(drop=True, inplace=True)
@@ -147,13 +162,23 @@ def weighted_popular_product(purchase_data, click_data):
     popular_desc.rename(columns={'product_id': 'product_id', 'user_id': 'purchase_cnt',
                                  'tot_pur': 'tot_pur'}, inplace=True)
     popular_desc['pur_rate'] = popular_desc.apply(lambda x: x['purchase_cnt'] / x['tot_pur'] * 10, axis=1)
+    return popular_desc
 
-    # click to purchase. based on prd_id
+
+def click_pop_rate(click_data):
     click_desc = click_data[['product_id', 'measure']].groupby(['product_id'], as_index=False).sum()
     click_desc.sort_values(by='measure', ascending=False, inplace=True)
     click_desc.reset_index(drop=True, inplace=True)
     click_desc['tot_click'] = len(click_desc)
     click_desc['click_rate'] = click_desc.apply(lambda x: x['measure'] / x['tot_click'] * 1000, axis=1)
+    return click_desc
+
+
+# 단순 인기순. 많은 사람들이 구매한 순으로 결정함. 이후 성별 구매 많은 순 데이터 뽑으면 될듯?
+def weighted_popular_product(purchase_data, click_data):
+    scaler = StandardScaler()
+
+    popular_desc, click_desc = purchase_pop_rate(purchase_data), click_pop_rate(click_data)
 
     wpp = pd.merge(click_desc, popular_desc, on='product_id', how='left').fillna(0)
     wpp['pop_rate'] = wpp.apply(lambda x: (x['purchase_cnt'] / x['measure']) * x['click_rate'] * x['pur_rate'], axis=1)
@@ -162,7 +187,32 @@ def weighted_popular_product(purchase_data, click_data):
     wpp['pop_rate'] = wpp['pop_rate'].apply(lambda x: math.log(x+1))
     wpp = wpp[['product_id', 'pop_rate']]
     wpp = wpp.reset_index(drop=True)
+
     return wpp.groupby('product_id', as_index=False).sum()
 
 
+def preprocessing_pur_click_data(purchase_data, click_data, product_data):
+    weighted_popular = weighted_popular_product(purchase_data, click_data)
 
+    own_rating_products = pd.merge(product_data, weighted_popular, on='product_id')
+    own_rating_products.fillna(0, inplace=True)
+    own_rating_products['rating'] = own_rating_products['relative_price'] + own_rating_products['pop_rate']
+
+    # 실 구매에선 없는 카테고리도 있음. 해당 카테고리의 유저들에겐 단순 클릭 데이터로 추천을 해 줄 것임.
+    p_after_c = purchase_after_click(click_data, purchase_data)
+    p_after_c = duplicated_click(p_after_c)
+    return p_after_c, own_rating_products
+
+
+def new_user_preprocess(user_data, click_data, purchase_data):
+    remain_col_list, rename_col_dict = ['user_id_y', 'product_id', 'measure', 'dt'], {'user_id_y': 'user_id'}
+
+    cat_user_click = pd.merge(click_data, user_data, left_on='user_id', right_on='old')
+    cat_user_pur = pd.merge(purchase_data, user_data, left_on='user_id', right_on='old')
+
+    cat_user_click = cat_user_click[remain_col_list]
+    cat_user_pur = cat_user_pur[remain_col_list]
+
+    cat_user_click.rename(columns=rename_col_dict, inplace=True)
+    cat_user_pur.rename(columns=rename_col_dict, inplace=True)
+    return cat_user_click, cat_user_pur

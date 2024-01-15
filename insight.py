@@ -1,3 +1,4 @@
+import math
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -150,12 +151,110 @@ result['age_range'].replace('609', '60-', inplace=True)
 result['age_range'].replace('109', 'unknown', inplace=True)
 result['gender'].replace('3', 'unknown', inplace=True)
 
+
+#############################
 # 유저 카테고리별 가격에 대한 반응
+#############################
+cat_pur = pd.merge(purchase_data, cat_product, on='product_id')
+cat_user.columns = ['user_id', 'age_range', 'gender', 'cat_age_range', 'cat_gender', 'cat_user']
+cat_pur = pd.merge(cat_pur, cat_user, on='user_id')
+cat_pur = cat_pur[['user_id', 'product_id', 'measure', 'price', 'category', 'age_range', 'gender', 'cat_user']]
+cat_pur['age_range'].replace('609', '60-', inplace=True)
+cat_pur['age_range'].replace('109', 'unknown', inplace=True)
+cat_pur['gender'].replace('3', 'unknown', inplace=True)
+
+# 유저 카테고리별 구매
+# 203040 남자들이 스마트폰 종류를 지나치게 많이 구매 정확한 선호를 반영한다고 할 수 없음.
+# 가격이 10만이 넘어가는 것들은 10개 안쪽으로 구매해야 정상적 선호라고 보고 데이터 반영할 것
+cat_pur_user_g = cat_pur[['user_id', 'cat_user', 'product_id', 'category', 'measure']].groupby(['user_id', 'cat_user', 'product_id', 'category'], as_index=False).sum()
+cat_pur_user_g = pd.merge(cat_pur_user_g, cat_pur[['user_id', 'product_id', 'category', 'price', 'age_range', 'gender']], on=['user_id', 'product_id', 'category'])
+per_user_g = (cat_pur_user_g[['cat_user', 'product_id', 'category', 'measure', 'price','age_range', 'gender']].
+              groupby(['cat_user', 'product_id', 'category', 'price','age_range', 'gender'], as_index=False).sum())
+per_user_g['cat'] = per_user_g['category'].map({val: key for key, val in product_2_idx.items()})
+mask1 = (per_user_g.price >= 100000) & (per_user_g.measure > 10)
+per_user_g = per_user_g.loc[~mask1,:]
+# 거의 모든 연령대의 성별이 스마트폰을 가장 많이 구매함.
+# 한가지 특이할만한 점은 아기용품에 대한 클릭 집중도가 높았던 30대 여성 집단에선 아기 용품을 별로 구매하지 않았단 것임
+# 아기 관련 용품이 다른 구매채널보다 매력적인지 아닌지 확인해 볼 필요가 있음(종류, 가격 등)
+gg_user = per_user_g[['cat_user', 'category', 'age_range', 'gender', 'measure', 'cat']].groupby(['cat_user', 'category', 'age_range', 'gender', 'cat'], as_index=False).sum()
+aa = gg_user[gg_user['cat_user']=='31']
+
+# 유저 카테고리별 가격 민감도
+product_mean = cat_product[['category', 'price']].groupby('category', as_index=False).mean()
+product_mean.columns = ['category', 'price_mean']
+p_mean_per_user = pd.merge(per_user_g, product_mean, on='category')
+p_mean_per_user['price_deviation'] = (p_mean_per_user['price'] - p_mean_per_user['price_mean']) * p_mean_per_user['measure']
+mps_user = deepcopy(p_mean_per_user)
+# mps_user = p_mean_per_user[p_mean_per_user['category']==119]
+mps_user = mps_user[['cat_user', 'category', 'age_range', 'gender', 'measure', 'cat', 'price_mean', 'price_deviation']]
+mps_user = mps_user.groupby(['cat_user', 'category', 'age_range', 'gender', 'cat', 'price_mean'], as_index=False).sum()
+# 대체적으로 남성들이 스마트폰 product category 내에서 비싼 제품을 사고 여성들이 상대적으로 덜 비싼 제품을 구매함 - 스마트폰
+# 여성의복은 전 세대의 여성들에게 약간의 구매가 있지만 남성패션은 남성들의 구매가 단 한건도 존재하지 않음 - 옷
+# category 내 product 다양성이 고려되진 않았음
+mps_user_sum = mps_user[['category', 'cat', 'price_deviation']].groupby(['category', 'cat'], as_index=False).sum()
+mps_user_sum.columns = ['category', 'cat', 'sum_deviation']
+mps_user_cnt = mps_user[['category', 'cat', 'cat_user']].groupby(['category', 'cat'], as_index=False).count()
+mps_user_cnt.columns = ['category', 'cat', 'cnt']
+mps_user = pd.merge(mps_user, mps_user_sum, on=['category', 'cat'])
+mps_user = pd.merge(mps_user, mps_user_cnt, on=['category', 'cat'])
+mps_per_user = mps_user[['cat_user', 'category', 'age_range', 'gender','cat', 'measure', 'price_deviation']]
+mps_per_user_minus = mps_per_user[mps_per_user['price_deviation'] < 0].groupby(['cat_user', 'age_range', 'gender'], as_index=False).count()
+mps_per_user_plus = mps_per_user[mps_per_user['price_deviation'] >= 0].groupby(['cat_user', 'age_range', 'gender'], as_index=False).count()
+mps_per_user_minus = mps_per_user_minus[['cat_user', 'age_range', 'gender', 'category']]
+mps_per_user_plus = mps_per_user_plus[['cat_user', 'age_range', 'gender', 'category']]
+mps_per_user_minus.columns = ['cat_user', 'age_range', 'gender', 'minus_cnt']
+mps_per_user_plus.columns = ['cat_user', 'age_range', 'gender', 'plus_cnt']
+mps_pmp = pd.merge(mps_per_user_minus, mps_per_user_plus, on=['cat_user', 'age_range', 'gender'], how='left')
+# 대체적으로 203040 남성들이 product카테고리 평균보다 비싼 product를 사며 여성들은 평균보다 싼 product를 사는 경향이 있음
+# 하지만 이는 실 구매가 1건만 있는 경우도 포함이 된 결과기 때문에 지속적인 관찰이 필요해 보임
+
+#####################
+# 유저 카테고리별 구매율(구매까지 이어지는지 클릭만 해보고 가는지)
+#####################
+g_cat_user_c = cat_user_c[['cat_user', 'measure']].groupby('cat_user', as_index=False).sum()
+g_cat_user_c = pd.merge(g_cat_user_c, cat_user[['user_id', 'gender', 'age_range']], left_on='cat_user', right_on='user_id')
+g_cat_user_c = g_cat_user_c[['cat_user', 'measure', 'gender', 'age_range']]
+g_cat_user_c['age_range'].replace('609', '60-', inplace=True)
+g_cat_user_c['age_range'].replace('109', 'unknown', inplace=True)
+g_cat_user_c['gender'].replace('3', 'unknown', inplace=True)
+g_cat_user_c.drop_duplicates(inplace=True)
+
+cat_user = cat_user[['old', 'age_range', 'gender', 'user_id']]
+cat_user.columns = ['user_id', 'age_range', 'gender', 'cat_user']
+p_after_c['measure_purchase'] = p_after_c['measure_purchase'] / p_after_c['measure_purchase']
+cat_pur = pd.merge(p_after_c, cat_user, on='user_id')
+cat_user_pur = cat_pur[['cat_user', 'measure_purchase', 'gender', 'age_range']].groupby(['cat_user', 'gender', 'age_range'], as_index=False).sum()
+user_pur_click_rate = pd.merge(g_cat_user_c, cat_user_pur, on=['cat_user','gender', 'age_range'], how='left')
+user_pur_click_rate.fillna(0, inplace=True)
+user_pur_click_rate['click_pur_rate'] = user_pur_click_rate['measure_purchase'] / user_pur_click_rate['measure']
+# 203040 남성들이 클릭:구매 전환비를 가지고 있음. 약 100번 클릭 시 한번 이상 사는
+
+cat_pur.columns
+cat_pur_user = cat_pur[['category', 'measure_click', 'measure_purchase', 'age_range', 'gender', 'cat_user']]
+cat_pur_user = cat_pur_user.groupby(['category', 'age_range', 'gender', 'cat_user'], as_index=False).sum()
+cat_pur_user['click_pur_rate'] = cat_pur_user['measure_purchase'] / cat_pur_user['measure_click']
+cpp_pro = cat_pur_user[['category', 'cat_user']]
+cpp_pro = cpp_pro.groupby('category', as_index=False).count()
+cpp_pro = cpp_pro[cpp_pro['cat_user'] > 2]
+cat_pur_user = pd.merge(cat_pur_user, cpp_pro, on='category')
+cat_pur_user['cat'] = cat_pur_user['category'].map({val: key for key, val in product_2_idx.items()})
+cat_pur_user.columns
+cat_pur_user = cat_pur_user[['cat_user_x', 'age_range', 'gender', 'cat', 'measure_click', 'measure_purchase', 'click_pur_rate']]
+# 구매가 최소 3개 이상의 유저 카테고리로 이루어진 물품카테고리 구매전환율(1명의 user만 구매한 product를 제외하기 위함)
+# 여기 존재하지 않는 카테고리는 아예 클릭이 없었거나, 클릭했지만 구매가 없는경우
+
+bb = cat_pur_user[cat_pur_user['cat_user_x']=='41']
+aa = cat_pur_user[cat_pur_user['cat_user_x']=='31']
+# 특이하게 30대 여성보다 40대 여성에서 아기용품에 대해 구매율이 더 높음
+
+cat_click_not = cat_click[~cat_click['category'].isin(cat_pur_user['category'].unique())]
+cat_click_not = cat_click_not[['category', 'measure']]
+cat_click_not = cat_click_not.groupby('category', as_index=False).sum()
+cat_click_not['cat'] = cat_click_not['category'].map({val: key for key, val in product_2_idx.items()})
+# pc 노트북, 게임, 애완동물 용품, 아이돌 사진집, 취미 수예 핸드크래프트 카테고리 등등이 많은 클릭에도 불구하고 구매로 이어지지 않음.
+# 가격 하락이나 종류의 다양성 증가 등 구매를 올릴 수 있다면 매출이 증가할 가능성 있음
+# 예를 들어 게임은 19세 이하 남성이 상품 카테고리중 가장 관심 있어 하는데 해당 카테고리에 대한 경쟁력을 강화하면 19세 이하 남성 고객을 확보 할 수 있음
 
 
-
-
-
-# 유저 카테고리별 구매율(구매까지 이어지는지 클릭만 해보고 가는지
 
 
